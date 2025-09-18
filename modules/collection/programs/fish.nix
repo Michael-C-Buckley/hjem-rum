@@ -154,36 +154,7 @@ in {
   config = mkIf cfg.enable {
     packages =
       (optionals (cfg.package != null) [cfg.package])
-      ++ (filter (pl: isVendored pl) (attrValues cfg.plugins));
-
-    rum.programs.fish.earlyConfigFiles = mapAttrs' (name: source:
-      nameValuePair "rum-plugin-${name}"
-      #  fish
-      ''
-        # Plugin ${name} -- ${source}
-        set -l src "${source}"
-
-        if test -d "$src/functions"
-            set fish_function_path $fish_function_path[1] "$src/functions" $fish_function_path[2..]
-        end
-
-        if test -d "$src/completions"
-            set fish_complete_path $fish_complete_path[1] "$src/completions" $fish_complete_path[2..]
-        end
-
-        for f in "$src/conf.d/"*
-            source "$f"
-        end
-
-        if test -f "$src/key_bindings.fish"
-            source "$src/key_bindings.fish"
-        end
-
-        if test -f "$src/init.fish"
-            source "$src/init.fish"
-        end
-      '')
-    (filterAttrs (n: v: !(isVendored v)) cfg.plugins);
+      ++ (filter isVendored (attrValues cfg.plugins));
 
     xdg.config.files =
       {
@@ -199,6 +170,43 @@ in {
         '';
       }
       // (mapAttrs' (name: val: nameValuePair "fish/functions/${name}.fish" {source = toFishFunc val name;}) cfg.functions)
-      // (mapAttrs' (name: val: nameValuePair "fish/conf.d/${name}.fish" {source = writeFish "${name}.fish" val;}) cfg.earlyConfigFiles);
+      // (
+        map (
+          # Split conf.d creation into two sections
+          mapAttrs' (name: val: nameValuePair "fish/conf.d/${name}.fish" {source = writeFish "${name}.fish" val;})
+        ) [
+          # `earlyConfigFiles` Option provided values
+          cfg.earlyConfigFiles
+          # Files derived from plugins
+          (mapAttrs' (name: source:
+            nameValuePair "rum-plugin-${name}" ("rum-plugin-${name}"
+              #  fish
+              ''
+                # Plugin ${name} -- ${source}
+                set -l src "${source}"
+
+                if test -d "$src/functions"
+                    set fish_function_path $fish_function_path[1] "$src/functions" $fish_function_path[2..]
+                end
+
+                if test -d "$src/completions"
+                    set fish_complete_path $fish_complete_path[1] "$src/completions" $fish_complete_path[2..]
+                end
+
+                for f in "$src/conf.d/"*
+                    source "$f"
+                end
+
+                if test -f "$src/key_bindings.fish"
+                    source "$src/key_bindings.fish"
+                end
+
+                if test -f "$src/init.fish"
+                    source "$src/init.fish"
+                end
+              ''))
+          (filterAttrs (n: v: !(isVendored v)) cfg.plugins))
+        ]
+      );
   };
 }
